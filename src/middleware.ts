@@ -22,7 +22,7 @@ function hasCronAccess(request: NextRequest): boolean {
   return authHeader === `Bearer ${cronSecret}`;
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (
@@ -49,7 +49,7 @@ export function middleware(request: NextRequest) {
   const password = getAppPassword()!;
   const token = request.cookies.get(AUTH_COOKIE)?.value;
 
-  if (verifyAuthToken(password, token)) {
+  if (await verifyAuthToken(password, token)) {
     return NextResponse.next();
   }
 

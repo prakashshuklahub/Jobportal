@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     const response = NextResponse.json({ ok: true });
-    const token = createAuthToken(getAppPassword()!);
+    const token = await createAuthToken(getAppPassword()!);
     response.cookies.set(AUTH_COOKIE, token, getAuthCookieOptions());
     return response;
   } catch {
