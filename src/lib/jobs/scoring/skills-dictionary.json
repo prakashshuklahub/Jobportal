@@ -1,0 +1,17 @@
+[
+  "javascript", "typescript", "python", "java", "kotlin", "scala", "go", "golang", "rust",
+  "c++", "c#", "ruby", "php", "swift", "dart", "elixir", "haskell", "clojure",
+  "react", "react.js", "reactjs", "next.js", "nextjs", "vue", "vue.js", "angular",
+  "svelte", "node", "node.js", "nodejs", "express", "nestjs", "fastapi", "django",
+  "flask", "spring", "spring boot", "rails", "laravel", ".net", "asp.net",
+  "postgresql", "postgres", "mysql", "mongodb", "redis", "elasticsearch", "dynamodb",
+  "cassandra", "sqlite", "supabase", "firebase",
+  "aws", "azure", "gcp", "google cloud", "docker", "kubernetes", "k8s", "terraform",
+  "ansible", "jenkins", "github actions", "gitlab ci", "circleci", "ci/cd",
+  "graphql", "rest", "grpc", "kafka", "rabbitmq", "microservices",
+  "machine learning", "deep learning", "tensorflow", "pytorch", "scikit-learn",
+  "pandas", "numpy", "spark", "airflow", "dbt", "snowflake", "databricks",
+  "figma", "tailwind", "css", "html", "sass", "webpack", "vite",
+  "jest", "cypress", "playwright", "selenium", "tdd", "agile", "scrum",
+  "linux", "bash", "git", "jira", "confluence"
+]
