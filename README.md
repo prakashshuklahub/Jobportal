@@ -1,82 +1,177 @@
-# 🇩🇪 Jobportal — Germany Software Jobs
+<div align="center">
 
-> Job discovery for software roles in Germany: pulls multiple portals, keeps only what was posted
-> in the last 24 hours, scores every listing against your resume, and drafts the CV and cover letter.
+# 🇩🇪 Jobportal
 
-<p align="left">
-  <a href="https://jobportal-eight-lyart.vercel.app"><img src="https://img.shields.io/badge/Live%20demo-000?style=for-the-badge&logo=vercel&logoColor=white" alt="Live demo" /></a>
-  <img src="https://img.shields.io/badge/Next.js-000?style=for-the-badge&logo=nextdotjs&logoColor=white" alt="Next.js" />
-  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/Supabase-3FCF8E?style=for-the-badge&logo=supabase&logoColor=white" alt="Supabase" />
-  <img src="https://img.shields.io/badge/Gemini-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white" alt="Gemini" />
+**Job discovery for software roles in Germany — filtered before you read it.**
+
+Pulls eight job boards, keeps only what was posted in the last 24 hours, scores every listing
+against your resume out of 100, and hides anything below your threshold.
+For what's left, it drafts the CV and the cover letter.
+
+<p>
+  <img src="assets/badges/next-js-eb16d1.svg" alt="Next.js" />
+  <img src="assets/badges/typescript-d76883.svg" alt="TypeScript" />
+  <img src="assets/badges/supabase-ebae2a.svg" alt="Supabase" />
+  <img src="assets/badges/gemini-b3a5e0.svg" alt="Gemini" />
+  <img src="assets/badges/vercel-cron-d33f83.svg" alt="Vercel Cron" />
 </p>
 
-**[▶ Try it live](https://jobportal-eight-lyart.vercel.app)**
+[**▶ Live app**](https://jobportal-eight-lyart.vercel.app) · [How it works](#-how-it-works) · [Scoring](#-how-matching-works) · [Setup](#-getting-started)
+
+</div>
+
+---
 
 ## The problem
 
-Searching for a role across a dozen German job boards means the same listings over and over, most
-of them stale, and no quick way to tell which ones are actually worth an application. This does the
-filtering first so you only read what fits.
+Job hunting across German boards means opening LinkedIn, StepStone, XING, Indeed, Arbeitsagentur
+and three more every morning, seeing the same listing four times under different titles, and
+re-reading postings you already rejected last week — because nothing remembers what you've seen.
 
-## What it does
+Jobportal inverts it. The fetching, deduplicating, filtering and ranking happen on a schedule
+before you sit down. What you open is a short list of jobs that are new, unique, and actually
+match your profile.
 
-- **Aggregates multiple portals** — Arbeitnow, Bundesagentur für Arbeit and Apify-backed sources,
-  each normalised into one shape.
-- **Last 24 hours only.** Anything older is dropped, so you never re-read yesterday's board.
-- **Deduplicates** across portals — the same job posted in three places shows up once.
-- **Scores each listing against your profile.** A skills dictionary extracts requirements from the
-  posting and matches them to your resume; only jobs above a configurable threshold (default
-  **70%**) surface, each with a match badge.
-- **Three actions per job** — Apply, Create Resume, Create Cover Letter. The last two are generated
-  with **Gemini**, tailored to that specific posting.
-- **Runs on a work-search schedule.** A Vercel cron fires daily at 06:00 UTC; the pipeline only
-  actually fetches on work-search days (Tue–Sat), so the list is fresh when you sit down to it and
-  idle when you don't.
+## ✨ What it does
 
-## Architecture
+- **Eight sources, one shape.** Arbeitnow and Arbeitsagentur run free; LinkedIn, StepStone,
+  GermanTechJobs, Wellfound, Indeed and XING run through Apify. Every adapter normalises into
+  one `NormalizedJob` type, so the rest of the pipeline never knows where a job came from.
+- **Last 24 hours only.** Recency is a filter, not a sort. Yesterday's board is gone.
+- **Deduplicated across boards.** A hash over normalised title + company + location collapses the
+  same role posted in four places into one card.
+- **Scored out of 100** against your profile — skills, title, location, visa and seniority, each
+  weighted. Below your threshold (default **70%**), it never reaches the page.
+- **Three actions per job** — Apply, Create Resume, Create Cover Letter. The last two are drafted
+  by **Gemini** against that specific posting, not a generic template.
+- **Tue–Saturday schedule.** Berlin time. Sunday and Monday are quiet by design — German boards
+  barely move over the weekend, so fetching then just burns API quota.
+- **Resilient by default.** Each source gets an 8-second timeout, free sources run in parallel,
+  Apify sources run sequentially to respect rate limits, and one dead board never fails the run.
 
-| Layer | Path | Role |
+## 🔄 How it works
+
+```mermaid
+flowchart TB
+    CRON["⏰ Vercel cron<br/>daily 06:00 UTC"] --> GATE{"Tue–Sat<br/>in Berlin?"}
+    GATE -->|"Sun / Mon"| SKIP["😴 skip the run"]
+    GATE -->|yes| FETCH
+
+    subgraph FETCH["📥 Fetch — 8s timeout per source"]
+        direction LR
+        FREE["Free, in parallel<br/>Arbeitnow · Arbeitsagentur"]
+        APIFY["Apify, sequential<br/>LinkedIn · StepStone · GermanTechJobs<br/>Wellfound · Indeed · XING"]
+    end
+
+    FETCH --> NORM["🔧 Normalise<br/>one shape for every board"]
+    NORM --> RECENT["🕒 Keep last 24h"]
+    RECENT --> DEDUP["🧹 Dedupe<br/>hash(title + company + location)"]
+    DEDUP --> SCORE["🎯 Score vs profile<br/>out of 100"]
+    SCORE --> THRESH{"≥ threshold?<br/>default 70"}
+    THRESH -->|no| DROP["❌ never shown"]
+    THRESH -->|yes| DB[("💾 Supabase")]
+    DB --> UI["📄 Job cards<br/>with match badge"]
+    UI --> ACT["Apply · Resume · Cover letter<br/>✨ drafted by Gemini"]
+```
+
+## 🎯 How matching works
+
+Each job earns a score out of 100 across five weighted dimensions:
+
+| Dimension | Weight | How it's measured |
+|---|---:|---|
+| **Skills overlap** | 40 | Jaccard overlap between the skills in your profile and those extracted from the posting, against a 103-term dictionary |
+| **Title similarity** | 20 | Normalised title compared to your target titles, with core-word overlap for near misses |
+| **Location** | 15 | Your preferred locations, with remote treated as a first-class match |
+| **Visa sponsorship** | 15 | Whether the posting signals sponsorship — decisive for non-EU applicants |
+| **Seniority** | 10 | Posting level against your experience |
+
+Non-software roles are filtered out before scoring by a title regex covering both English and
+German forms — `software`, `entwickler`, `developer`, `engineer`, `devops`, `sre`, `architect`.
+
+Every score ships with a **breakdown**, so a job card can tell you *why* it scored 74 rather than
+just showing the number.
+
+## 🏗 Architecture
+
+| Layer | Path | Responsibility |
 |---|---|---|
-| Sources | `src/lib/jobs/sources/` | Per-portal adapters + `normalize.ts` into a shared shape |
-| Pipeline | `src/lib/jobs/pipeline.ts` | Fetch → normalise → dedupe → score → persist |
-| Scoring | `src/lib/jobs/scoring/` | Skills extraction and job-vs-profile match scoring |
-| Scheduling | `src/lib/jobs/schedule.ts` | Tue–Sat work-search window |
-| Cron | `src/app/api/cron/jobs-fetch/` | Scheduled fetch entry point |
-| Generation | `src/app/api/jobs/[id]/{resume,cover-letter}/` | Gemini-drafted documents |
-| Data | `supabase/migrations/` | Postgres schema |
-| UI | `src/app/jobs/` | Compact job cards with match badge and detail modal |
+| **Sources** | `src/lib/jobs/sources/` | One adapter per board, plus `normalize.ts` into a shared shape |
+| **Apify client** | `src/lib/jobs/apify-client.ts` | Six scraper-backed boards behind one interface |
+| **Pipeline** | `src/lib/jobs/pipeline.ts` | Fetch → normalise → dedupe → score → persist, with per-source state |
+| **Scoring** | `src/lib/jobs/scoring/` | `extract-skills.ts`, `score-job.ts`, and the skills dictionary |
+| **Schedule** | `src/lib/jobs/schedule.ts` | Berlin-timezone Tue–Sat gate |
+| **Cron** | `src/app/api/cron/jobs-fetch/` | Scheduled entry point, guarded by `CRON_SECRET` |
+| **Generation** | `src/app/api/jobs/[id]/{resume,cover-letter}/` | Gemini-drafted documents |
+| **Data** | `supabase/migrations/` | Postgres schema |
+| **UI** | `src/app/jobs/` | `JobCard`, `MatchBadge`, `ContentModal` |
 
-## Run it locally
+Source fetch state is persisted per board, so a source that fails or gets rate-limited resumes
+from its own cursor on the next run instead of restarting from scratch.
+
+## 🚀 Getting started
+
+**Prerequisites** — Node 20+, a Supabase project, and a Gemini API key. An Apify token is optional:
+without it the six scraper-backed sources are skipped and the two free boards still work.
 
 ```bash
 git clone https://github.com/prakashshuklahub/Jobportal.git
 cd Jobportal
 npm install
-cp .env.example .env.local   # then fill in the values below
+cp .env.example .env.local
 npm run dev
 ```
 
-Required environment variables:
+Apply the schema from `supabase/migrations/` before the first run.
 
-| Variable | Purpose |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-side writes from the pipeline |
-| `GEMINI_API_KEY` | Resume and cover-letter generation |
-| `APIFY_TOKEN` | Apify-backed portal sources |
-| `APP_PASSWORD` | Password for the single-user login |
-| `CRON_SECRET` | Shared secret guarding the cron route |
+<details>
+<summary><b>Environment variables</b></summary>
 
-Apply the database schema from `supabase/migrations/` before the first run.
+<br/>
 
-## Documentation
+| Variable | Required | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Supabase anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Server-side writes from the pipeline |
+| `GEMINI_API_KEY` | ✅ | Resume and cover-letter generation |
+| `APP_PASSWORD` | ✅ | Single-user login |
+| `APIFY_TOKEN` | — | The six scraper-backed sources; without it they're skipped |
+| `CRON_SECRET` | prod | Guards the cron route |
 
-The full MVP feature specification — portal-by-portal sourcing feasibility, scoring rules and data
-model — lives in **[docs/SPEC.md](docs/SPEC.md)**.
+</details>
+
+<details>
+<summary><b>Sources and their tiers</b></summary>
+
+<br/>
+
+| Source | Phase | Needs Apify |
+|---|:---:|:---:|
+| Arbeitnow | 1 | — |
+| Arbeitsagentur | 1 | — |
+| LinkedIn | 1 | ✅ |
+| StepStone | 1 | ✅ |
+| GermanTechJobs | 1 | ✅ |
+| Wellfound | 1 | ✅ |
+| Indeed Germany | 2 | ✅ |
+| XING Jobs | 2 | ✅ |
+
+Sources are individually toggleable per user in Settings.
+
+</details>
+
+## 📚 Documentation
+
+The full MVP feature specification — portal-by-portal sourcing feasibility, scoring rules and the
+data model — is in **[docs/SPEC.md](docs/SPEC.md)**.
 
 ---
 
-Built by **[Prakash Shukla](https://github.com/prakashshuklahub)** ·
-[The Hustling Engineer](https://www.youtube.com/@TheHustlingEngineer)
+<div align="center">
+
+Built by **[Prakash Shukla](https://github.com/prakashshuklahub)**
+
+[The Hustling Engineer](https://www.youtube.com/@TheHustlingEngineer) · [LinkedIn](https://www.linkedin.com/in/prakash-shukla/)
+
+</div>
